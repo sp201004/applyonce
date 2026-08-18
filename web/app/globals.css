@@ -74,6 +74,90 @@ body {
   }
 }
 
+/* Hero: slow pulsing glow around the Apply button */
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 20px 60px rgba(37, 99, 235, 0.45);
+  }
+  50% {
+    box-shadow: 0 24px 80px rgba(37, 99, 235, 0.65);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3.2s ease-in-out infinite;
+}
+
+/* Hero: staggered fade-up entrance for the left column */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  opacity: 0;
+  animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.fade-up-delay-1 { animation-delay: 0.05s; }
+.fade-up-delay-2 { animation-delay: 0.18s; }
+.fade-up-delay-3 { animation-delay: 0.31s; }
+.fade-up-delay-4 { animation-delay: 0.44s; }
+
+/* Final CTA: slow drifting decorative blob */
+@keyframes blob-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(0, -14px) scale(1.05);
+  }
+}
+
+.animate-blob-drift {
+  animation: blob-drift 9s ease-in-out infinite;
+}
+
+/* Hero: gentle mascot float */
+@keyframes float-mascot {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+.animate-float-mascot {
+  animation: float-mascot 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-glow,
+  .animate-float-mascot,
+  .animate-marquee,
+  .animate-marquee-reverse,
+  .animate-spin-slow,
+  .animate-blob-drift {
+    animation: none !important;
+  }
+
+  .animate-fade-up {
+    opacity: 1;
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
 @keyframes marquee {
   from {
     transform: translateX(0);

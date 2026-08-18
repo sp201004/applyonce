@@ -68,15 +68,25 @@ test('structured resume parser codes produce specific safe warnings', () => {
   }
 })
 
-test('no-key warnings distinguish a selectable Gemini key from no configured key', () => {
-  assert.equal(
-    getResumeParseWarning({ errorCode: 'NO_API_KEY', provider: 'groq', hasGeminiKey: false, hasGroqKey: false }),
-    'Add a Gemini API key in extension settings (or Groq key on dashboard) to enable autofill.',
-  )
-  assert.match(
-    getResumeParseWarning({ errorCode: 'NO_API_KEY', provider: 'groq', hasGeminiKey: true, hasGroqKey: false }),
-    /Select Gemini.*or add a Groq API key/i,
-  )
+test('an invalid Gemini key produces a safe, non-blocking warning', () => {
+  const warning = getResumeParseWarning({
+    errorCode: 'INVALID_API_KEY',
+    error: 'raw secret provider response AQ.secret/key',
+    provider: 'gemini',
+    status: 401,
+    model: 'gemini-3.5-flash',
+  })
+
+  assert.match(warning, /invalid or restricted/i)
+  assert.match(warning, /ready to save/i)
+  assert.doesNotMatch(warning, /raw secret|AQ\.secret|401|generativelanguage/i)
+})
+
+test('a missing key points the user to add a Gemini key without leaking internals', () => {
+  const warning = getResumeParseWarning({ errorCode: 'NO_API_KEY', provider: 'gemini' })
+
+  assert.match(warning, /Add a Gemini API key/i)
+  assert.match(warning, /ready to save/i)
 })
 
 test('saved resume warnings replace pending copy while preserving safe failure context', () => {

@@ -15,6 +15,7 @@ import {
   getSavedResumeParseWarning,
   hasUnsavedDashboardChanges,
 } from '@/lib/dashboard-state'
+import { geminiApiKeyStorageKey, parseResumeWithGemini } from '@/lib/gemini-web'
 import GeometricBackground from '@/components/GeometricBackground'
 
 function canMessageExtension() {
@@ -303,9 +304,10 @@ export default function DashboardClient({ userId, email, initialProfile, extensi
   const [popupPassword, setPopupPassword] = useState('')
   const [popupMsg, setPopupMsg] = useState('')
   const [popupLoading, setPopupLoading] = useState(false)
-  const [groqKey, setGroqKey] = useState(() => {
+  const [geminiKey, setGeminiKey] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('groqKey') || '';
+      // Browser localStorage only — local to this device and NOT encrypted.
+      return localStorage.getItem(geminiApiKeyStorageKey(userId)) || '';
     }
     return '';
   })
@@ -316,10 +318,10 @@ export default function DashboardClient({ userId, email, initialProfile, extensi
   const [settingsMsg, setSettingsMsg] = useState('')
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [activeSection, setActiveSection] = useState<SectionId>('personal')
-  const [showGroqKey, setShowGroqKey] = useState(false)
+  const [showGeminiKey, setShowGeminiKey] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [savingGroq, setSavingGroq] = useState(false)
+  const [savingGemini, setSavingGemini] = useState(false)
 
   // Auto-dismiss msg (used for toast notifications)
   useEffect(() => {
@@ -423,28 +425,16 @@ export default function DashboardClient({ userId, email, initialProfile, extensi
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const handleSaveGroqKey = () => {
-    setSavingGroq(true)
+  const handleSaveGeminiKey = () => {
+    setSavingGemini(true)
     if (typeof window !== 'undefined') {
-      localStorage.setItem('groqKey', groqKey)
-      const extId = extensionId || process.env.NEXT_PUBLIC_EXTENSION_ID;
-      if (extId && canMessageExtension()) {
-        try {
-          (window as any).chrome.runtime.sendMessage(
-            extId,
-            { type: 'SAVE_GROQ_KEY', groqKey },
-            () => {
-              consumeExtensionRuntimeError('Failed to sync the GROQ API key with the extension')
-            }
-          );
-        } catch (e) {
-          console.error('Failed to sync the GROQ API key with the extension', e)
-        }
-      }
+      // Stored only in this browser's localStorage (local-only, NOT encrypted).
+      // Never synced to the extension and never logged.
+      localStorage.setItem(geminiApiKeyStorageKey(userId), geminiKey)
     }
     setTimeout(() => {
-      setSavingGroq(false)
-      setMsg('GROQ API Key saved locally and synced with extension.')
+      setSavingGemini(false)
+      setMsg('Gemini API key saved in this browser.')
     }, 500)
   }
 
@@ -515,177 +505,87 @@ export default function DashboardClient({ userId, email, initialProfile, extensi
         return;
       }
 
-      // If user provided a Groq key on the dashboard, parse it directly here
-      if (groqKey.trim()) {
-        try {
-          const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${groqKey.trim()}`
-            },
-            body: JSON.stringify({
-              model: 'llama-3.1-8b-instant',
-              messages: [{
-                role: 'user',
-                content: `You are an AI assistant that extracts structured profile data from a resume.
-Extract the following fields from the resume text and return ONLY a valid JSON object matching this exact structure.
-If a field is not found or you are unsure, leave it as an empty string "" or an empty array [].
+      // Shared: merge a parsed profile object into local dashboard state.
+      const applyParsedProfile = (p: any) => {
+        const phoneParsed = p.phone ? parsePhoneAndCountryCode(p.phone) : { phone: '', countryCode: '' };
+        const nameInfo = (p.firstName || p.middleName || p.lastName)
+          ? splitAndFormatName(p.firstName, p.middleName, p.lastName)
+          : null;
+        setProfile(prev => ({
+          ...prev,
+          firstName: nameInfo ? (nameInfo.firstName || prev.firstName) : prev.firstName,
+          middleName: nameInfo ? nameInfo.middleName : prev.middleName,
+          lastName: nameInfo ? (nameInfo.lastName || prev.lastName) : prev.lastName,
+          email: p.email || prev.email,
+          phone: p.phone ? phoneParsed.phone : prev.phone,
+          countryCode: p.phone ? (phoneParsed.countryCode || prev.countryCode) : prev.countryCode,
+          address: p.address || prev.address,
+          city: p.city || prev.city,
+          state: p.state || prev.state,
+          country: p.country || prev.country,
+          zip: p.zip || prev.zip,
+          dateOfBirth: p.dateOfBirth || prev.dateOfBirth,
+          linkedin: p.linkedin || prev.linkedin,
+          github: p.github || prev.github,
+          website: p.website || prev.website,
+          x: p.x || prev.x,
+          medium: p.medium || prev.medium,
+          leetcode: p.leetcode || prev.leetcode,
+          gfg: p.gfg || prev.gfg,
+          education: p.education && p.education.length > 0 ? p.education : prev.education,
+          workExperience: p.workExperience && p.workExperience.length > 0 ? p.workExperience : prev.workExperience,
+          skills: p.skills && p.skills.length > 0 ? p.skills : prev.skills,
+          languages: p.languages && p.languages.length > 0 ? p.languages : prev.languages,
+          certificates: p.certificates && p.certificates.length > 0 ? p.certificates : prev.certificates,
+          achievements: p.achievements || prev.achievements
+        }));
+      };
 
-CRITICAL INSTRUCTIONS:
-1. Return ONLY a valid JSON object.
-2. Do not include markdown formatting or extra text.
-
-JSON Structure:
-{
-  "firstName": "", "middleName": "", "lastName": "", "email": "", "phone": "",
-  "address": "", "city": "", "state": "", "country": "", "zip": "", "dateOfBirth": "",
-  "linkedin": "", "github": "", "website": "", "x": "", "medium": "", "leetcode": "", "gfg": "",
-  "education": [
-    {
-      "collegeName": "", "branch": "", "degree": "", "gpa": "", "startDate": "", "endDate": "", "currentlyStudyHere": false
-    }
-  ],
-  "workExperience": [
-    {
-      "company": "", "jobTitle": "", "location": "", "startDate": "", "endDate": "", "currentlyWorkHere": false, "summary": "", "bullets": [""]
-    }
-  ],
-  "skills": [""],
-  "languages": [""],
-  "certificates": [""],
-  "achievements": ""
-}
-
-Resume Text:
-${text.substring(0, 15000)}`
-              }],
-              temperature: 0.1,
-              response_format: { type: "json_object" }
-            })
-          });
-
-          if (!res.ok) {
-            if (res.status === 429) throw new Error('AI rate limit reached');
-            if (res.status === 404) throw new Error('AI model unavailable');
-            if (res.status === 503) throw new Error('AI temporarily unavailable');
-            throw new Error('AI request failed');
-          }
-          const json = await res.json();
-          const content = json?.choices?.[0]?.message?.content;
-          if (typeof content !== 'string' || !content.trim()) throw new Error('AI returned an empty response');
-          let parsedText = content.trim();
-          
-          if (parsedText.startsWith('```json')) {
-            parsedText = parsedText.substring(7);
-            if (parsedText.endsWith('```')) parsedText = parsedText.substring(0, parsedText.length - 3);
-          } else if (parsedText.startsWith('```')) {
-            parsedText = parsedText.substring(3);
-            if (parsedText.endsWith('```')) parsedText = parsedText.substring(0, parsedText.length - 3);
-          }
-          
-          const p = JSON.parse(parsedText.trim());
-          const phoneParsed = p.phone ? parsePhoneAndCountryCode(p.phone) : { phone: '', countryCode: '' };
-          const nameInfo = (p.firstName || p.middleName || p.lastName)
-            ? splitAndFormatName(p.firstName, p.middleName, p.lastName)
-            : null;
-          setProfile(prev => ({
-            ...prev,
-            firstName: nameInfo ? (nameInfo.firstName || prev.firstName) : prev.firstName,
-            middleName: nameInfo ? nameInfo.middleName : prev.middleName,
-            lastName: nameInfo ? (nameInfo.lastName || prev.lastName) : prev.lastName,
-            email: p.email || prev.email,
-            phone: p.phone ? phoneParsed.phone : prev.phone,
-            countryCode: p.phone ? (phoneParsed.countryCode || prev.countryCode) : prev.countryCode,
-            address: p.address || prev.address,
-            city: p.city || prev.city,
-            state: p.state || prev.state,
-            country: p.country || prev.country,
-            zip: p.zip || prev.zip,
-            dateOfBirth: p.dateOfBirth || prev.dateOfBirth,
-            linkedin: p.linkedin || prev.linkedin,
-            github: p.github || prev.github,
-            website: p.website || prev.website,
-            x: p.x || prev.x,
-            medium: p.medium || prev.medium,
-            leetcode: p.leetcode || prev.leetcode,
-            gfg: p.gfg || prev.gfg,
-            education: p.education && p.education.length > 0 ? p.education : prev.education,
-            workExperience: p.workExperience && p.workExperience.length > 0 ? p.workExperience : prev.workExperience,
-            skills: p.skills && p.skills.length > 0 ? p.skills : prev.skills,
-            languages: p.languages && p.languages.length > 0 ? p.languages : prev.languages,
-            certificates: p.certificates && p.certificates.length > 0 ? p.certificates : prev.certificates,
-            achievements: p.achievements || prev.achievements
-          }));
-          setResumeParseWarning('');
-          setMsg('Profile autofilled from resume!');
-          setParsingResume(false);
-          return;
-        } catch (e: any) {
+      // Browser-local Gemini fallback: used only when the extension is not
+      // connected/healthy. The key lives in this browser's localStorage
+      // (local-only, NOT encrypted) and is never logged.
+      const runGeminiFallback = async () => {
+        if (!geminiKey.trim()) {
           setMsg('');
-          setResumeParseWarning(getResumeParseWarning(e));
+          setResumeParseWarning(getResumeParseWarning(null, 'extension'));
           setParsingResume(false);
           return;
         }
-      }
+        try {
+          const p = await parseResumeWithGemini(text, geminiKey.trim());
+          applyParsedProfile(p);
+          setResumeParseWarning('');
+          setMsg('Profile autofilled from resume!');
+        } catch (e: any) {
+          setMsg('');
+          setResumeParseWarning(getResumeParseWarning(e));
+        }
+        setParsingResume(false);
+      };
 
-      // Otherwise, try sending to extension for parsing
+      // Prefer a healthy extension; otherwise fall back to browser-local Gemini.
       
       const extId = extensionId || process.env.NEXT_PUBLIC_EXTENSION_ID;
       if (extId && canMessageExtension()) {
         (window as any).chrome.runtime.sendMessage(extId, { type: 'PARSE_RESUME_TO_PROFILE', text }, (response: any) => {
           if (consumeExtensionRuntimeError('Failed to parse the resume with the extension')) {
-            setMsg('');
-            setResumeParseWarning(getResumeParseWarning(null, 'extension'));
-            setParsingResume(false);
+            // Extension isn't reachable — try the browser-local Gemini fallback.
+            void runGeminiFallback();
             return;
           }
           if (response && response.ok && response.profile) {
-            const p = response.profile;
-            const phoneParsed = p.phone ? parsePhoneAndCountryCode(p.phone) : { phone: '', countryCode: '' };
-            const nameInfo = (p.firstName || p.middleName || p.lastName)
-              ? splitAndFormatName(p.firstName, p.middleName, p.lastName)
-              : null;
-            setProfile(prev => ({
-              ...prev,
-              firstName: nameInfo ? (nameInfo.firstName || prev.firstName) : prev.firstName,
-              middleName: nameInfo ? nameInfo.middleName : prev.middleName,
-              lastName: nameInfo ? (nameInfo.lastName || prev.lastName) : prev.lastName,
-              email: p.email || prev.email,
-              phone: p.phone ? phoneParsed.phone : prev.phone,
-              countryCode: p.phone ? (phoneParsed.countryCode || prev.countryCode) : prev.countryCode,
-              address: p.address || prev.address,
-              city: p.city || prev.city,
-              state: p.state || prev.state,
-              country: p.country || prev.country,
-              zip: p.zip || prev.zip,
-              dateOfBirth: p.dateOfBirth || prev.dateOfBirth,
-              linkedin: p.linkedin || prev.linkedin,
-              github: p.github || prev.github,
-              website: p.website || prev.website,
-              x: p.x || prev.x,
-              medium: p.medium || prev.medium,
-              leetcode: p.leetcode || prev.leetcode,
-              gfg: p.gfg || prev.gfg,
-              education: p.education && p.education.length > 0 ? p.education : prev.education,
-              workExperience: p.workExperience && p.workExperience.length > 0 ? p.workExperience : prev.workExperience,
-              skills: p.skills && p.skills.length > 0 ? p.skills : prev.skills,
-              languages: p.languages && p.languages.length > 0 ? p.languages : prev.languages,
-              certificates: p.certificates && p.certificates.length > 0 ? p.certificates : prev.certificates,
-              achievements: p.achievements || prev.achievements
-            }));
+            applyParsedProfile(response.profile);
             setResumeParseWarning('');
             setMsg('Profile autofilled from resume!');
+            setParsingResume(false);
           } else {
-            setMsg('');
-            setResumeParseWarning(getResumeParseWarning(response));
+            // Extension responded but couldn't parse — fall back to Gemini.
+            void runGeminiFallback();
           }
-          setParsingResume(false);
         });
       } else {
-        setMsg('');
-        setResumeParseWarning(getResumeParseWarning(null, 'extension'));
-        setParsingResume(false);
+        // No extension connected — use the browser-local Gemini fallback.
+        void runGeminiFallback();
       }
     } catch (err: any) {
       setMsg('Error parsing PDF: ' + err.message);
@@ -952,40 +852,41 @@ ${text.substring(0, 15000)}`
           
           {/* Top Cards Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 mt-6 relative">
-            {/* Groq Key Card */}
+            {/* Gemini Key Card */}
             <div className="bg-white rounded-3xl border border-light-accent p-6 shadow-[0_8px_30px_rgba(0,0,0,0.03)] relative overflow-hidden group z-10">
               <div className="absolute -right-12 -top-12 opacity-5 pointer-events-none transition-transform duration-700 group-hover:scale-110">
                 <svg width="150" height="150" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/></svg>
               </div>
               <h3 className="text-sm font-extrabold text-primary flex items-center gap-2 mb-2 relative z-10">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
-                GROQ API KEY
+                GEMINI API KEY
               </h3>
               <p className="text-[10px] font-bold text-black/50 mb-4 max-w-[80%] relative z-10 leading-relaxed">
-                Optional. Used for web-based resume parsing when extension is not connected.
+                Optional. Used for web-based resume parsing when the extension is not connected. Get a free key at{' '}
+                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:opacity-80">aistudio.google.com/apikey</a>
               </p>
               <div className="flex items-center gap-3 relative z-10">
                 <div className="relative flex-1 bg-white rounded-xl border border-light-accent focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all shadow-sm">
                   <input
-                    type={showGroqKey ? "text" : "password"}
-                    value={groqKey}
-                    onChange={(e) => setGroqKey(e.target.value)}
+                    type={showGeminiKey ? "text" : "password"}
+                    value={geminiKey}
+                    onChange={(e) => setGeminiKey(e.target.value)}
                     placeholder="........................"
                     className="w-full bg-transparent border-none text-sm font-extrabold text-black px-4 py-3 outline-none placeholder:text-black/20 tracking-widest"
                   />
                   <div 
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-black/30 cursor-pointer hover:text-primary transition-colors"
-                    onClick={() => setShowGroqKey(!showGroqKey)}
+                    onClick={() => setShowGeminiKey(!showGeminiKey)}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                   </div>
                 </div>
                 <button
-                  onClick={handleSaveGroqKey}
-                  disabled={savingGroq}
+                  onClick={handleSaveGeminiKey}
+                  disabled={savingGemini}
                   className="shrink-0 bg-gradient-to-b from-[#2563eb] to-primary text-white px-6 py-3 rounded-xl text-sm font-extrabold shadow-[0_4px_15px_var(--soft-glow)] hover:shadow-[0_6px_20px_var(--glow)] transition-all hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
                 >
-                  {savingGroq ? 'Saving...' : 'Save Key'}
+                  {savingGemini ? 'Saving...' : 'Save Key'}
                 </button>
               </div>
             </div>

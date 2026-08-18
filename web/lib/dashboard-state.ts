@@ -4,8 +4,6 @@ export type ResumeParseError = {
   provider?: unknown
   status?: unknown
   model?: unknown
-  hasGeminiKey?: unknown
-  hasGroqKey?: unknown
 }
 
 function getErrorMessage(error: unknown) {
@@ -38,12 +36,11 @@ export function getResumeParseWarning(
   }
 
   const code = getErrorCode(error)
-  const details = error && typeof error === 'object' ? error as ResumeParseError : null
   if (code === 'NO_API_KEY') {
-    if (details?.provider === 'groq' && details.hasGeminiKey === true) {
-      return 'Groq is selected but no Groq API key is configured in the extension. Select Gemini in extension settings or add a Groq API key to enable autofill. Your PDF is still ready to save.'
-    }
-    return 'Add a Gemini API key in extension settings (or Groq key on dashboard) to enable autofill.'
+    return 'Add a Gemini API key on the dashboard (or in extension settings) to enable autofill. Your PDF is still ready to save.'
+  }
+  if (code === 'INVALID_API_KEY') {
+    return 'The Gemini API key looks invalid or restricted. Profile fields were not auto-filled; your PDF is still ready to save. Update the key and try again.'
   }
   if (code === 'RATE_LIMIT') {
     return 'AI resume parsing is rate-limited right now. Profile fields were not auto-filled; your PDF is still ready to save. Please try again later.'
@@ -65,8 +62,11 @@ export function getResumeParseWarning(
   }
 
   const message = getErrorMessage(error)
-  if (/api key not configured|no api key/i.test(message)) {
-    return 'Add a Gemini API key in extension settings (or Groq key on dashboard) to enable autofill.'
+  if (/invalid or restricted|invalid api key/i.test(message)) {
+    return 'The Gemini API key looks invalid or restricted. Profile fields were not auto-filled; your PDF is still ready to save. Update the key and try again.'
+  }
+  if (/api key not configured|no api key|no gemini api key/i.test(message)) {
+    return 'Add a Gemini API key on the dashboard (or in extension settings) to enable autofill. Your PDF is still ready to save.'
   }
   if (/rate.?limit|\b429\b/i.test(message)) {
     return 'AI resume parsing is rate-limited right now. Profile fields were not auto-filled; your PDF is still ready to save. Please try again later.'
@@ -83,8 +83,11 @@ export function getResumeParseWarning(
 export function getSavedResumeParseWarning(warning: unknown) {
   const message = warning instanceof Error ? warning.message : String(warning || '')
 
-  if (/Add a Gemini API key|no Groq API key is configured/i.test(message)) {
-    return 'Resume saved, but AI autofill needs an API key. Configure one in the extension settings and try again.'
+  if (/invalid or restricted|invalid api key/i.test(message)) {
+    return 'Resume saved, but AI autofill failed because the Gemini API key is invalid or restricted. Profile fields were not auto-filled.'
+  }
+  if (/Add a Gemini API key/i.test(message)) {
+    return 'Resume saved, but AI autofill needs an API key. Add a Gemini API key and try again.'
   }
   if (/rate.?limit|\b429\b/i.test(message)) {
     return 'Resume saved, but AI autofill was rate-limited. Profile fields were not auto-filled. Please try again later.'
