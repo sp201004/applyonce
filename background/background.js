@@ -1,4 +1,4 @@
-importScripts('../config.js', '../provider-settings.js', './gemini-model.js');
+importScripts('../config.js', '../provider-settings.js', './gemini-model.js', '../content/repeat-groups.js');
 const CONFIG = self.JOB_AUTOFILL_CONFIG;
 const { getEffectiveProviderSettings } = self.APPLYONCE_PROVIDER_SETTINGS;
 const providerMigrationReady = getEffectiveProviderSettings(chrome.storage.local);
@@ -325,7 +325,7 @@ async function ensureContentScriptInjected(tabId) {
     try {
       await chrome.scripting.executeScript({
         target: { tabId },
-        files: ['content/content.js']
+        files: ['content/repeat-groups.js', 'content/content.js']
       });
     } catch (errMain) {
       console.error('Failed to inject into main frame:', errMain);
@@ -334,7 +334,7 @@ async function ensureContentScriptInjected(tabId) {
     try {
       await chrome.scripting.executeScript({
         target: { tabId, allFrames: true },
-        files: ['content/content.js']
+        files: ['content/repeat-groups.js', 'content/content.js']
       });
     } catch (errFrames) {
       // Ignore subframe permission errors
@@ -400,10 +400,17 @@ async function handleMatchFields(fields) {
     const textToMatch = `${f.label} ${f.name} ${f.placeholder}`.toLowerCase();
     
     if (f.type !== 'checkbox' && f.type !== 'radio') {
+      const RG = self.APPLYONCE_REPEAT_GROUPS;
       for (const rule of RULES) {
         if (rule.regex.test(textToMatch)) {
+          // Multi-entry: rewrite the hardcoded ".0." index to this field's section index.
+          let fieldPath = rule.field;
+          if (RG && f.groupType && typeof f.groupIndex === 'number') {
+            fieldPath = RG.applyGroupIndex(rule.field, f.groupType, f.groupIndex);
+          }
+
           // Resolve dot notation for nested fields (e.g. education.0.schoolName)
-          const keys = rule.field.split('.');
+          const keys = fieldPath.split('.');
           let val = profile;
           for (const k of keys) {
             if (val !== undefined && val !== null) {
@@ -413,6 +420,18 @@ async function handleMatchFields(fields) {
               break;
             }
           }
+
+          // Single <textarea> asking for ALL entries: join every entry (blank-line separated).
+          if (!val && RG && f.type === 'textarea' && !f.groupType) {
+            const m = rule.field.match(/^(workExperience|education|projects)\.\d+\.(.+)$/);
+            if (m) {
+              const arr = profile[m[1]];
+              if (Array.isArray(arr) && arr.length > 1) {
+                val = RG.joinMultiEntry(arr, [m[2]]) || RG.joinMultiEntry(arr);
+              }
+            }
+          }
+
           if (val) {
             matched[f.id] = val;
             ruleMatched = true;
@@ -458,6 +477,7 @@ CRITICAL INSTRUCTIONS:
 12. Use the Job Description details (if provided) to write tailored answers for custom questions like "Why do you want to join [Company]?" or "Describe your experience...".
 13. If a custom question (like "Why do you want to join..." or "Describe your experience...") is asked, and the user's profile lacks detailed information, draft a professional response highlighting the candidate's general software engineering capabilities, interest in the role requirements, and alignment with the job description. Do not leave custom textareas blank if they are required or ask for reasons.
 14. For checkbox (type: "checkbox") and radio button (type: "radio") fields: if the candidate's profile or resume details match the specific checkbox/radio option label, return "true" or "yes" for that field ID. If the candidate's profile or resume does not match the option, return "false" or omit the field ID.
+15. MULTI-ENTRY SECTIONS: Some fields include "groupType" (experience | education | projects) and a 0-based "groupIndex". These belong to a repeated section. You MUST use the matching entry from the profile arrays for that field: groupType "experience" -> workExperience[groupIndex], "education" -> education[groupIndex], "projects" -> projects[groupIndex]. NEVER copy entry 0 into every section. If the profile array has no entry at that index, omit the field id (leave it empty). Do not invent extra entries.
 
 Example Output:
 {
@@ -481,7 +501,14 @@ Resume Text:
 ${resumeText.substring(0, 10000)}
 
 Fields to fill:
-${JSON.stringify(chunk.map(f => ({ id: f.id, label: f.label, name: f.name, placeholder: f.placeholder, type: f.type, options: f.options })), null, 2)}
+${JSON.stringify(chunk.map(f => {
+        const out = { id: f.id, label: f.label, name: f.name, placeholder: f.placeholder, type: f.type, options: f.options };
+        if (f.groupType && typeof f.groupIndex === 'number') {
+          out.groupType = f.groupType;
+          out.groupIndex = f.groupIndex;
+        }
+        return out;
+      }), null, 2)}
 `;
       
       try {
@@ -837,24 +864,82 @@ async function callGroq(prompt, key, model, jsonMode) {
   return text;
 }
 
+// Remove a leading BOM plus any leading/embedded zero-width characters that some
+// providers prepend to their output. These are never valid JSON syntax.
+function stripInvisibleChars(source) {
+  return source.replace(/[\uFEFF\u200B\u200C\u200D\u2060]/g, '');
+}
+
+// Strip Markdown code fences (```json / ``` / ~~~ with optional language tag)
+// wherever they appear, not just at the very start/end of the string.
+function stripCodeFences(source) {
+  return source
+    .replace(/```[a-zA-Z0-9_-]*[ \t]*\r?\n?/g, ' ')
+    .replace(/~~~[a-zA-Z0-9_-]*[ \t]*\r?\n?/g, ' ');
+}
+
+// Extract the outermost balanced JSON value ({...} or [...]) starting at the
+// first opening bracket. String literals are respected so braces/brackets that
+// appear inside quoted values do not affect the balance count. Handles escaped
+// quotes (\") and escaped backslashes (\\). Returns null when no balanced value
+// can be found.
+function extractBalancedJson(source) {
+  const objIndex = source.indexOf('{');
+  const arrIndex = source.indexOf('[');
+  let startIndex;
+  if (objIndex === -1) startIndex = arrIndex;
+  else if (arrIndex === -1) startIndex = objIndex;
+  else startIndex = Math.min(objIndex, arrIndex);
+  if (startIndex === -1) return null;
+
+  const openChar = source[startIndex];
+  const closeChar = openChar === '{' ? '}' : ']';
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = startIndex; i < source.length; i += 1) {
+    const ch = source[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === openChar) {
+      depth += 1;
+    } else if (ch === closeChar) {
+      depth -= 1;
+      if (depth === 0) return source.slice(startIndex, i + 1);
+    }
+  }
+  return null;
+}
+
 function parseAnswerJson(text) {
   if (typeof text !== 'string' || !text.trim()) throw new SafeLlmError('EMPTY_RESPONSE');
 
-  let clean = text.trim();
-  if (clean.startsWith('```json')) {
-    clean = clean.substring(7);
-    if (clean.endsWith('```')) clean = clean.substring(0, clean.length - 3);
-  } else if (clean.startsWith('```')) {
-    clean = clean.substring(3);
-    if (clean.endsWith('```')) clean = clean.substring(0, clean.length - 3);
-  }
+  const cleaned = stripCodeFences(stripInvisibleChars(text)).trim();
 
   let parsed;
   try {
-    parsed = JSON.parse(clean.trim());
-  } catch (error) {
-    throw new SafeLlmError('INVALID_JSON');
+    parsed = JSON.parse(cleaned);
+  } catch (directError) {
+    const balanced = extractBalancedJson(cleaned);
+    if (balanced === null) throw new SafeLlmError('INVALID_JSON');
+    try {
+      parsed = JSON.parse(balanced);
+    } catch (balancedError) {
+      throw new SafeLlmError('INVALID_JSON');
+    }
   }
+
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new SafeLlmError('AI_OUTPUT');
   }

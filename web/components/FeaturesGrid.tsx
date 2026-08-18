@@ -57,7 +57,7 @@ export default function FeaturesGrid() {
       <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {FEATURES.map(({ icon: Icon, title, body }, i) => (
           <ScrollReveal key={title} delay={(i % 3) * 100}>
-            <article className="group h-full rounded-2xl border border-blue-100 bg-white p-7 shadow-[0_8px_24px_rgba(37,99,235,0.05)] outline-none transition-all duration-300 hover:-translate-y-1 hover:border-[#93c5fd] hover:shadow-[0_0_0_4px_rgba(147,197,253,0.35),0_16px_40px_rgba(37,99,235,0.12)]">
+            <article className="group h-full rounded-2xl border border-slate-200/60 bg-white/70 p-7 shadow-[0_8px_24px_rgba(37,99,235,0.05)] outline-none backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-[#93c5fd] hover:shadow-xl">
               <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#eff6ff] text-[#2563eb] transition-colors duration-300 group-hover:bg-[#2563eb] group-hover:text-white">
                 <Icon size={22} strokeWidth={2.2} aria-hidden="true" />
               </span>

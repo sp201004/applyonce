@@ -1,17 +1,20 @@
+'use client'
+
+import type React from 'react'
+import { useCallback, useRef } from 'react'
 import Link from 'next/link'
 import LoginCard from '@/components/LoginCard'
 import Footer from '@/components/Footer'
-import GeometricBackground from '@/components/GeometricBackground'
 import PlatformsCarousel from '@/components/PlatformsCarousel'
 import ApplyButton from '@/components/ApplyButton'
 import DetectiveMascot from '@/components/DetectiveMascot'
 import LandingBackground from '@/components/LandingBackground'
+import LandingNav from '@/components/LandingNav'
 import ScrollReveal from '@/components/ScrollReveal'
 import HowItWorks from '@/components/HowItWorks'
 import FeaturesGrid from '@/components/FeaturesGrid'
 import StatsStrip from '@/components/StatsStrip'
 import FinalCta from '@/components/FinalCta'
-import FloatingConnectCard from '@/components/FloatingConnectCard'
 
 interface LandingPageProps {
   isLoggedIn: boolean
@@ -48,108 +51,198 @@ const SOCIAL_LINKS = [
   },
 ]
 
+/** Tiny 4-point sparkle used near the mascot and Apply button. */
+function Sparkle({ className = '', style }: { className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={`animate-sparkle pointer-events-none absolute text-[#2563eb] ${className}`}
+      style={style}
+      fill="currentColor"
+    >
+      <path d="M12 0c.7 6 2.9 8.2 8.9 8.9C14.9 9.6 12.7 11.8 12 18c-.7-6.2-2.9-8.4-8.9-9.1C9.1 8.2 11.3 6 12 0Z" />
+    </svg>
+  )
+}
+
 /**
  * Polished ApplyOnce landing hero.
- * Light + blue theme, blue detective mascot, non-overlapping handwritten
- * annotation arrow, large Apply CTA, and a right-edge social rail.
- * Preserves authenticated routing (logged-in -> /dashboard, else -> ?login=true).
+ * Light + blue theme, blue detective mascot, primary "Get started" CTA, a large
+ * Apply button with a non-overlapping handwritten annotation arrow, and a
+ * right-edge social rail. Preserves authenticated routing
+ * (logged-in -> /dashboard, else -> ?login=true).
  */
 export default function LandingPage({ isLoggedIn, showLogin }: LandingPageProps) {
   const applyHref = isLoggedIn ? '/dashboard' : '?login=true'
 
+  // Subtle magnetic hover for the "Get started" CTA (reduced-motion safe).
+  const ctaRef = useRef<HTMLAnchorElement | null>(null)
+
+  const onCtaMove = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
+    const el = ctaRef.current
+    if (!el) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const rect = el.getBoundingClientRect()
+    const relX = e.clientX - (rect.left + rect.width / 2)
+    const relY = e.clientY - (rect.top + rect.height / 2)
+    // move a small fraction toward the cursor
+    el.style.transform = `translate(${relX * 0.18}px, ${relY * 0.28}px) scale(1.04)`
+  }, [])
+
+  const onCtaLeave = useCallback(() => {
+    const el = ctaRef.current
+    if (!el) return
+    el.style.transform = ''
+  }, [])
+
   return (
-    <div className="relative flex min-h-screen flex-col overflow-x-hidden bg-[#f8fafc] text-[#111827]">
-      <GeometricBackground />
+    <div className="relative flex min-h-screen flex-col overflow-x-hidden bg-white text-[#111827]">
+      <LandingNav isLoggedIn={isLoggedIn} />
 
-      <header className="relative z-40 mx-auto flex w-full max-w-[1440px] items-center justify-between px-4 py-6 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-3 font-extrabold tracking-tight">
-          <img src="/applyonce_logo.svg" alt="ApplyOnce" className="h-10 w-10" />
-          <span className="text-xl">
-            Apply<span className="text-[#2563eb]">Once</span>
-          </span>
-        </Link>
-        <nav className="flex items-center gap-3 text-sm font-bold">
-          <Link href="/privacy" className="hidden rounded-lg px-3 py-2 text-slate-600 hover:text-[#2563eb] sm:block">
-            Privacy
-          </Link>
-          <Link
-            href={isLoggedIn ? '/dashboard' : '?login=true'}
-            scroll={false}
-            className="rounded-xl bg-[#2563eb] px-5 py-2.5 text-white shadow-sm hover:bg-[#1d4ed8]"
-          >
-            {isLoggedIn ? 'Dashboard' : 'Sign in'}
-          </Link>
-        </nav>
-      </header>
+      {/* ================= HERO ================= */}
+      <main className="relative">
+        <LandingBackground />
 
-      <main className="relative z-10 mx-auto grid min-h-[640px] w-full max-w-[1440px] flex-1 items-center gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16 lg:px-8 xl:gap-20">
-        {/* Left column — vertically centered copy with staggered fade-up entrance */}
-        <section className="flex flex-col justify-center">
-          <p className="animate-fade-up fade-up-delay-1 mb-4 inline-flex w-fit rounded-full border border-blue-200 bg-white px-4 py-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#2563eb] shadow-sm">
-            Apply smarter, not longer
-          </p>
-          <h1 className="animate-fade-up fade-up-delay-2 max-w-2xl text-5xl font-black leading-[1.05] tracking-tight sm:text-6xl">
-            Your profile, ready for every <span className="text-[#2563eb]">application.</span>
-          </h1>
-          <p className="animate-fade-up fade-up-delay-3 mt-6 max-w-xl text-lg font-medium leading-relaxed text-slate-600">
-            ApplyOnce securely syncs your profile and helps fill job applications while you stay in control of every
-            answer. It never auto-submits.
-          </p>
-          <div className="animate-fade-up fade-up-delay-4 mt-8 flex flex-wrap items-center gap-3">
-            <span className="rounded-xl border border-slate-200 bg-white px-5 py-3 font-bold text-slate-600 shadow-sm">
-              Never auto-submits
-            </span>
-            <span className="rounded-xl border border-slate-200 bg-white px-5 py-3 font-bold text-slate-600 shadow-sm">
-              You review every answer
-            </span>
-          </div>
-        </section>
-
-        {/* Right column — mascot, Apply CTA, annotation arrow, doodles */}
-        <section
-          aria-label="Get started"
-          className="relative flex min-h-[360px] items-center justify-center lg:min-h-[520px] lg:pr-16 xl:pr-20"
-        >
-          <LandingBackground />
-
-          {/* Blue mascot: top-right above the Apply zone (behind = dotted grid) */}
-          <DetectiveMascot className="absolute -top-2 right-0 h-[200px] w-[200px] sm:h-[220px] sm:w-[220px] lg:right-2 lg:h-[240px] lg:w-[240px]" />
-
-          {/* Apply cluster */}
-          <div className="relative mt-24 lg:mt-16">
-            <ApplyButton href={applyHref} scroll={false} />
-
-            {/* Handwritten annotation + dashed arrow — desktop only, below-left, never overlaps button */}
-            <div className="pointer-events-none absolute right-full top-full mr-3 mt-2 hidden w-[248px] lg:block">
-              <svg viewBox="0 0 248 140" className="h-[140px] w-[248px]" fill="none" aria-hidden="true">
-                <path
-                  d="M34 104 C 58 62, 150 58, 228 20"
-                  stroke="#2563eb"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeDasharray="2 7"
-                />
-                {/* arrowhead pointing up-right toward button's bottom-left, stops short */}
-                <path
-                  d="M228 20 L 213 19 M228 20 L 221 33"
-                  stroke="#2563eb"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                />
+        <div className="relative z-10 mx-auto flex min-h-[calc(100vh-80px)] w-full max-w-[1440px] flex-col justify-center gap-12 px-4 py-12 sm:px-6 lg:grid lg:max-w-6xl lg:grid-cols-[56fr_44fr] lg:items-center lg:gap-6 lg:px-8">
+          {/* --- Mascot (mobile: above heading / desktop: absolute top-right of hero) --- */}
+          <div className="order-1 flex justify-center lg:order-none lg:absolute lg:right-[5%] lg:top-[10%] lg:z-20">
+            <div className="relative flex h-[140px] w-[140px] items-center justify-center lg:h-[260px] lg:w-[260px]">
+              <div className="absolute inset-0 rounded-full bg-[#dbeafe] blur-2xl" aria-hidden="true" />
+              <div className="absolute inset-0 rounded-full bg-[#dbeafe]/70" aria-hidden="true" />
+              {/* twinkling sparkles near the mascot */}
+              <Sparkle className="h-5 w-5" style={{ right: '-6px', top: '6px', animationDelay: '0.2s' }} />
+              <Sparkle className="h-3.5 w-3.5" style={{ left: '-2px', bottom: '10px', animationDelay: '1.1s' }} />
+              <svg
+                viewBox="0 0 32 32"
+                aria-hidden="true"
+                className="pointer-events-none absolute right-0 top-2 z-20 h-8 w-8 text-[#2563eb] opacity-70 lg:-right-1 lg:top-5 lg:h-10 lg:w-10"
+              >
+                <path d="M16 2c1.3 8.5 4.8 12 13 14-8.2 2-11.7 5.5-13 14-1.3-8.5-4.8-12-13-14C11.2 14 14.7 10.5 16 2Z" fill="currentColor" />
               </svg>
-              <p className="absolute bottom-1 left-0 max-w-[160px] rotate-[-6deg] text-2xl font-semibold leading-tight text-[#2563eb] [font-family:var(--font-caveat)]">
-                Click here to setup profile
-              </p>
+              <DetectiveMascot className="relative z-10 h-[92%] w-[92%]" />
+            </div>
+          </div>
+
+          {/* --- Left column: copy (55%) --- */}
+          <section className="order-2 flex max-w-2xl flex-col gap-6 lg:order-none">
+            <p className="animate-fade-up fade-up-delay-1 inline-flex w-fit rounded-full border border-blue-200 bg-white px-4 py-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#2563eb] shadow-sm">
+              Apply smarter, not longer
+            </p>
+            <h1 className="animate-fade-up fade-up-delay-2 text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl xl:text-7xl">
+              Your profile, ready for every{' '}
+              <span className="relative inline-block">
+                <span className="animate-gradient-text">application.</span>
+                <svg
+                  viewBox="0 0 220 18"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -bottom-1 left-0 h-3 w-full overflow-visible text-[#2563eb] opacity-70"
+                >
+                  <path d="M3 12C51 4 111 5 217 10" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
+                  <path d="M18 15C73 10 145 9 207 13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.45" />
+                </svg>
+              </span>
+            </h1>
+            <p className="animate-fade-up fade-up-delay-3 max-w-lg text-lg font-medium leading-relaxed text-slate-600 sm:text-xl">
+              ApplyOnce securely syncs your profile and helps fill job applications while you stay in control of every
+              answer. It never auto-submits.
+            </p>
+
+            {/* trust chips (glassmorphism) */}
+            <div className="animate-fade-up fade-up-delay-3 flex flex-wrap items-center gap-3">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/60 px-4 py-2 text-sm font-bold text-slate-600 shadow-sm backdrop-blur">
+                <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#2563eb]" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                Never auto-submits
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/60 px-4 py-2 text-sm font-bold text-slate-600 shadow-sm backdrop-blur">
+                <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#2563eb]" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+                You review every answer
+              </span>
+            </div>
+
+            {/* trusted-style "works on" strip */}
+            <div className="animate-fade-up fade-up-delay-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-xs font-bold text-slate-500">Works on</span>
+              <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+                LinkedIn · Greenhouse · Lever · Workday · Naukri
+              </span>
+            </div>
+
+            {/* primary CTA */}
+            <div className="animate-fade-up fade-up-delay-4">
+              <Link
+                ref={ctaRef}
+                href={applyHref}
+                scroll={false}
+                aria-label="Get started"
+                onMouseMove={onCtaMove}
+                onMouseLeave={onCtaLeave}
+                className="magnetic-cta group inline-flex items-center justify-center gap-2 rounded-2xl border-b-4 border-[#1e40af] bg-gradient-to-b from-[#3b82f6] to-[#2563eb] px-9 py-4 text-lg font-bold text-white shadow-[0_16px_40px_rgba(37,99,235,0.35)] outline-none transition-transform duration-200 ease-out will-change-transform hover:scale-[1.03] focus-visible:ring-4 focus-visible:ring-[#93c5fd] active:scale-95 sm:text-xl"
+              >
+                Get started
+                <span aria-hidden="true" className="transition-transform duration-300 group-hover:translate-x-1">→</span>
+              </Link>
+            </div>
+          </section>
+
+          {/* --- Apply cluster (mobile: block below CTAs / desktop: centered in right column) --- */}
+          <div className="order-3 flex justify-center lg:order-none lg:absolute lg:left-[71%] lg:top-[56%] lg:-translate-x-1/2 lg:-translate-y-1/2 lg:justify-start">
+            <div className="relative">
+              {/* twinkling sparkles near the Apply button */}
+              <Sparkle className="z-20 h-5 w-5" style={{ right: '-10px', top: '-14px', animationDelay: '0.6s' }} />
+              <Sparkle className="z-20 h-3.5 w-3.5" style={{ left: '-8px', bottom: '-6px', animationDelay: '1.6s' }} />
+
+              <ApplyButton href={applyHref} scroll={false} />
+
+              {/* Handwritten annotation + tighter curve (desktop only). */}
+              <div className="pointer-events-none absolute left-0 top-full hidden lg:block">
+                <svg
+                  viewBox="0 0 180 80"
+                  fill="none"
+                  aria-hidden="true"
+                  className="absolute"
+                  style={{ left: '-152px', top: '0', width: '180px', height: '80px' }}
+                >
+                  <path
+                    d="M110 54 Q 139 45 152 3"
+                    stroke="#2563eb"
+                    strokeWidth="2.8"
+                    strokeLinecap="round"
+                    className="motion-safe:animate-arrow-draw"
+                    style={{ '--dash-len': '120' } as React.CSSProperties}
+                  />
+                  <path
+                    d="M152 3 L 141 7 M152 3 L 149 15"
+                    stroke="#2563eb"
+                    strokeWidth="2.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="motion-safe:animate-arrow-draw"
+                    style={{ '--dash-len': '30' } as React.CSSProperties}
+                  />
+                </svg>
+                <p
+                  className="absolute w-[170px] rotate-[-6deg] text-3xl font-semibold leading-[0.9] text-[#2563eb] [font-family:var(--font-caveat)]"
+                  style={{ left: '-198px', top: '24px' }}
+                >
+                  Click here to setup profile
+                </p>
+              </div>
             </div>
           </div>
 
           {showLogin && <LoginCard />}
-        </section>
+        </div>
 
-        {/* Right-edge vertical social rail — desktop only */}
+        {/* Right-edge vertical social rail — desktop only, fixed & vertically centered */}
         <nav
           aria-label="ApplyOnce social links"
-          className="absolute right-1 top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-3 lg:flex xl:right-3"
+          className="fixed right-4 top-1/2 z-40 hidden -translate-y-1/2 flex-col gap-3 lg:flex"
         >
           {SOCIAL_LINKS.map((s) => (
             <a
@@ -158,7 +251,7 @@ export default function LandingPage({ isLoggedIn, showLogin }: LandingPageProps)
               target="_blank"
               rel="noopener noreferrer"
               aria-label={s.label}
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm outline-none transition-colors hover:border-[#2563eb] hover:bg-[#2563eb] hover:text-white focus-visible:ring-4 focus-visible:ring-[#93c5fd]"
+              className="social-lift flex h-11 w-11 items-center justify-center rounded-full border border-[#e2e8f0] bg-white text-slate-500 shadow-sm outline-none transition-all duration-300 hover:-translate-y-0.5 hover:border-[#2563eb] hover:bg-[#2563eb] hover:text-white hover:shadow-[0_10px_24px_rgba(37,99,235,0.28)] focus-visible:ring-4 focus-visible:ring-[#93c5fd] motion-reduce:hover:translate-y-0"
             >
               {s.icon}
             </a>
@@ -166,6 +259,7 @@ export default function LandingPage({ isLoggedIn, showLogin }: LandingPageProps)
         </nav>
       </main>
 
+      {/* ================= BELOW HERO ================= */}
       <HowItWorks />
 
       <ScrollReveal as="section">
@@ -179,9 +273,6 @@ export default function LandingPage({ isLoggedIn, showLogin }: LandingPageProps)
       <FinalCta isLoggedIn={isLoggedIn} />
 
       <Footer />
-
-      {/* Desktop-only floating extension card — routes to /connect (no fabricated store URL) */}
-      <FloatingConnectCard />
     </div>
   )
 }

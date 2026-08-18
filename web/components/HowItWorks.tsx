@@ -48,7 +48,7 @@ export default function HowItWorks() {
       <div className="mt-14 grid gap-6 md:grid-cols-3">
         {STEPS.map(({ icon: Icon, step, title, body }, i) => (
           <ScrollReveal key={title} delay={i * 120}>
-            <article className="group h-full rounded-2xl border border-blue-100 bg-white p-8 shadow-[0_10px_30px_rgba(37,99,235,0.06)] transition-all duration-300 hover:-translate-y-1.5 hover:border-blue-200 hover:shadow-[0_18px_45px_rgba(37,99,235,0.14)]">
+            <article className="group h-full rounded-2xl border border-slate-200/60 bg-white/70 p-8 shadow-[0_10px_30px_rgba(37,99,235,0.06)] backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl">
               <div className="flex items-center justify-between">
                 <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#eff6ff] text-[#2563eb] transition-colors duration-300 group-hover:bg-[#2563eb] group-hover:text-white">
                   <Icon size={26} strokeWidth={2.2} aria-hidden="true" />

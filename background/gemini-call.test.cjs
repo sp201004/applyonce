@@ -90,11 +90,11 @@ test('worker startup imports centralized model config before exact versioned ban
   const secret = 'startup-secret-that-must-not-appear'
   const worker = loadWorker([], { geminiKey: secret })
 
-  assert.deepEqual(worker.importedScripts, ['../config.js', '../provider-settings.js', './gemini-model.js'])
-  assert.equal(worker.context.JOB_AUTOFILL_CONFIG.BACKGROUND_BUILD_VERSION, 2)
+  assert.deepEqual(worker.importedScripts, ['../config.js', '../provider-settings.js', './gemini-model.js', '../content/repeat-groups.js'])
+  assert.equal(worker.context.JOB_AUTOFILL_CONFIG.BACKGROUND_BUILD_VERSION, 4)
   assert.equal(worker.context.GEMINI_MODEL_CONFIG.VERIFIED_GEMINI_DEFAULT_MODEL, 'gemini-3.5-flash')
   assert.deepEqual(JSON.parse(JSON.stringify(worker.startupLogs)), [[
-    '[applyonce] background v2 loaded',
+    '[applyonce] background v4 loaded',
     { geminiDefault: 'gemini-3.5-flash' },
   ]])
   assert.doesNotMatch(JSON.stringify(worker.startupLogs), new RegExp(secret))
@@ -386,7 +386,7 @@ test('final resume-parser console error is self-contained and redacts malicious 
   assert.equal(details.provider, 'gemini')
   assert.deepEqual(details.keyInfo, { present: true, length: key.length, prefix: 'AQ.f' })
   assert.equal(details.endpointSample, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=[REDACTED]')
-  assert.equal(details.buildVersion, 2)
+  assert.equal(details.buildVersion, 4)
   assert.equal(details.attempts.length, 3)
   assert.ok(details.attempts.every(({ apiError }) => apiError.length <= 120))
 

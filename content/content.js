@@ -91,6 +91,52 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+// --- Repeated-group (multi-entry) detection helpers ---
+const __repeatContainerKeyMap = new WeakMap();
+let __repeatContainerKeySeq = 0;
+
+function getRepeatContainerKey(node) {
+  if (!node) return '';
+  if (!__repeatContainerKeyMap.has(node)) {
+    __repeatContainerKeyMap.set(node, 'c' + (++__repeatContainerKeySeq));
+  }
+  return __repeatContainerKeyMap.get(node);
+}
+
+// Walk up to find the nearest repeating section container for a field.
+function findRepeatContainer(el) {
+  const typeRe = /(work.?experience|experience|employment|education|academic|project)/i;
+  let node = el.parentElement;
+  for (let i = 0; i < 8 && node && node !== document.body; i++) {
+    if (node.tagName === 'FIELDSET') return node;
+    const attrText = [
+      node.id || '',
+      typeof node.className === 'string' ? node.className : '',
+      node.getAttribute ? (node.getAttribute('data-section') || '') : '',
+      node.getAttribute ? (node.getAttribute('data-repeat') || '') : '',
+      node.getAttribute ? (node.getAttribute('data-automation-id') || '') : ''
+    ].join(' ');
+    if (typeRe.test(attrText)) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
+// Best-effort section heading text (used to detect type + explicit index).
+function getSectionHeadingText(container, el) {
+  if (container) {
+    const legend = container.querySelector('legend');
+    if (legend && legend.innerText.trim()) return legend.innerText.trim();
+    const heading = container.querySelector('h1, h2, h3, h4, h5, h6, .section-title, .form-section-title, [class*="section-title"]');
+    if (heading && heading.innerText.trim()) return heading.innerText.trim();
+    if (container.getAttribute) {
+      const auto = container.getAttribute('data-automation-id') || container.getAttribute('data-section') || '';
+      if (auto) return auto;
+    }
+  }
+  return getGroupLabel(el) || '';
+}
+
 function getGroupLabel(el) {
   const fieldset = el.closest('fieldset');
   if (fieldset) {
@@ -193,6 +239,7 @@ async function extractAndFill(root = document) {
   debugLog("Scanning DOM for input elements...");
   const inputs = Array.from(root.querySelectorAll('input:not([type="hidden"]):not([type="submit"]), select, textarea, [contenteditable="true"], [role="radio"], [role="checkbox"], [role="combobox"], [aria-haspopup="listbox"], [data-automation-id*="select"], [data-automation-id*="dropdown"], [data-automation-id*="formField"], .select__control'));
   const fields = [];
+  const groupInputs = []; // parallel descriptors for repeated-group detection
   
   inputs.forEach((el, i) => {
     if (seenElements.has(el)) return;
@@ -247,7 +294,40 @@ async function extractAndFill(root = document) {
       label: finalLabel,
       options: getOptions(el)
     });
+
+    // Collect signals used to cluster this field into a repeating section.
+    const container = findRepeatContainer(el);
+    groupInputs.push({
+      id: el.dataset.autofillId,
+      name: name,
+      label: finalLabel,
+      headingText: getSectionHeadingText(container, el),
+      containerKey: container ? getRepeatContainerKey(container) : '',
+      domOrder: i
+    });
   });
+
+  // Assign multi-entry group indices so experience[i] -> section i (not all -> [0]).
+  try {
+    const rg = (typeof self !== 'undefined' && self.APPLYONCE_REPEAT_GROUPS) || null;
+    if (rg) {
+      const assignments = rg.assignGroupIndices(groupInputs);
+      let groupedCount = 0;
+      fields.forEach(f => {
+        const a = assignments[f.id];
+        if (a) {
+          f.groupType = a.type;
+          f.groupIndex = a.index;
+          groupedCount++;
+        }
+      });
+      if (groupedCount > 0) {
+        debugLog(`Detected ${groupedCount} fields across repeated sections (multi-entry mapping).`);
+      }
+    }
+  } catch (err) {
+    debugLog(`Group detection skipped: ${err.message || err}`);
+  }
   
   debugLog(`Found ${fields.length} new inputs to match.`);
   if (fields.length === 0) {

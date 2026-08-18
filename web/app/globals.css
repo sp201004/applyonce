@@ -74,19 +74,25 @@ body {
   }
 }
 
-/* Hero: slow pulsing glow around the Apply button */
+/* Hero: slow layered glow around the Apply button */
 @keyframes pulse-glow {
   0%,
   100% {
-    box-shadow: 0 20px 60px rgba(37, 99, 235, 0.45);
+    box-shadow:
+      0 25px 70px rgba(37, 99, 235, 0.45),
+      0 9px 0 #1e40af,
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
   }
   50% {
-    box-shadow: 0 24px 80px rgba(37, 99, 235, 0.65);
+    box-shadow:
+      0 30px 88px rgba(37, 99, 235, 0.58),
+      0 9px 0 #1e40af,
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
   }
 }
 
 .animate-pulse-glow {
-  animation: pulse-glow 3.2s ease-in-out infinite;
+  animation: pulse-glow 2.5s ease-in-out infinite;
 }
 
 /* Hero: staggered fade-up entrance for the left column */
@@ -141,13 +147,147 @@ body {
   animation: float-mascot 4s ease-in-out infinite;
 }
 
+/* ===== Premium visual-craft additions ===== */
+
+/* Background: large gradient-mesh blobs drifting on transform-only loops */
+@keyframes mesh-drift-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(6%, 4%, 0) scale(1.12);
+  }
+}
+
+@keyframes mesh-drift-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+  50% {
+    transform: translate3d(-5%, 6%, 0) scale(0.95);
+  }
+}
+
+@keyframes mesh-drift-c {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(4%, -6%, 0) scale(1.1);
+  }
+}
+
+.animate-mesh-a {
+  animation: mesh-drift-a 30s ease-in-out infinite;
+}
+
+.animate-mesh-b {
+  animation: mesh-drift-b 34s ease-in-out infinite;
+  animation-delay: -6s;
+}
+
+.animate-mesh-c {
+  animation: mesh-drift-c 38s ease-in-out infinite;
+  animation-delay: -12s;
+}
+
+/* Typography: shifting gradient text for the "application." word */
+@keyframes gradient-text-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-gradient-text {
+  background-image: linear-gradient(90deg, #2563eb, #6366f1, #0ea5e9, #6366f1, #2563eb);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-text-shift 6s ease-in-out infinite;
+}
+
+/* Apply button: slow rotating conic-gradient shimmer border ring */
+@keyframes conic-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-conic-spin {
+  animation: conic-spin 6s linear infinite;
+}
+
+/* Hero extras: twinkling sparkles (opacity + scale pulse) */
+@keyframes sparkle-twinkle {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+.animate-sparkle {
+  animation: sparkle-twinkle 2.8s ease-in-out infinite;
+}
+
+/* Hero extras: annotation arrow stroke draw-in (after hero fade) */
+@keyframes arrow-draw {
+  from {
+    stroke-dashoffset: var(--dash-len, 260);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-arrow-draw {
+  stroke-dasharray: var(--dash-len, 260);
+  stroke-dashoffset: var(--dash-len, 260);
+  animation: arrow-draw 1s ease-out 0.9s forwards;
+}
+
+/* Hero: soft top-glow line under the navbar */
+@keyframes top-glow-breathe {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+.animate-top-glow {
+  animation: top-glow-breathe 8s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-pulse-glow,
   .animate-float-mascot,
   .animate-marquee,
   .animate-marquee-reverse,
   .animate-spin-slow,
-  .animate-blob-drift {
+  .animate-blob-drift,
+  .animate-mesh-a,
+  .animate-mesh-b,
+  .animate-mesh-c,
+  .animate-gradient-text,
+  .animate-conic-spin,
+  .animate-sparkle,
+  .animate-top-glow {
     animation: none !important;
   }
 
@@ -155,6 +295,25 @@ body {
     opacity: 1;
     animation: none !important;
     transform: none !important;
+  }
+
+  /* Gradient text: render final static gradient (no shift loop) */
+  .animate-gradient-text {
+    background-position: 0% 50%;
+  }
+
+  /* Annotation arrow: render fully drawn, no draw-in animation */
+  .animate-arrow-draw {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+    animation: none !important;
+  }
+
+  /* Magnetic / lift micro-interactions: disable transform hovers */
+  .magnetic-cta,
+  .social-lift,
+  .mascot-tilt {
+    transition: none !important;
   }
 }
 
