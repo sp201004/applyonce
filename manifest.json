@@ -31,7 +31,7 @@
     }
   ],
   "externally_connectable": {
-    "matches": ["http://localhost:3000/*"]
+    "matches": ["http://localhost:3000/*", "https://applyonce1.vercel.app/*"]
   },
   "icons": {
     "16": "assets/icon16.png",
