@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "ApplyOnce - AI Job Autofill",
+  "short_name": "ApplyOnce",
+  "version": "1.0.0",
+  "description": "ApplyOnce securely autofills job applications with your saved profile and AI assistance.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "webNavigation",
+    "sidePanel"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "32": "assets/icon32.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+  "side_panel": { "default_path": "sidepanel/sidepanel.html" },
+  "options_page": "options/options.html",
+  "background": { "service_worker": "background/background.js" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "all_frames": true,
+      "js": ["content/content.js"]
+    }
+  ],
+  "externally_connectable": {
+    "matches": ["http://localhost:3000/*"]
+  },
+  "icons": {
+    "16": "assets/icon16.png",
+    "32": "assets/icon32.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjyDr/FV62G6a+bsEVhomqPbnV9qHuDZKYcD9zyGuGYBneaehlz3Chnp3FugXlm0Kp58zdhk2m0Eakgej+CVpIwIETcaxOKSzWQiKU9xgY7znwRCoJ3IAo2g2019QZkZt7Csy+etlPeCcIFv6sgoZ1f7vpFTfHfMOuo+PdgEOo6ojhTc6f18RaOIP5LGbPgPjxbNNpAc0ulI/hZvAu22cQzLCw/yWHDMT/kmeTOtrzpfX2ftrKiKdgVEJ4sQOmjNF+259tGZfKNp9JKqLQGDpqCFHGwZE81/ImhWxR7tmMWVTVfn3W3jAPA6/DinZ1AzA1Fz9VY6OIHCPfFzCT2dm9wIDAQAB"
+}

@@ -1,0 +1,176 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-light-accent: var(--light-accent);
+  --color-border: var(--border);
+  --color-cards: var(--cards);
+  
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+:root {
+  --background: #f8fafc;
+  --foreground: #111827;
+  --primary: #2563eb;
+  --secondary: #3b82f6;
+  --accent: #93c5fd;
+  --light-accent: #dbeafe;
+  --border: #dbeafe;
+  --cards: #ffffff;
+  --glow: rgba(37, 99, 235, 0.32);
+  --soft-glow: rgba(37, 99, 235, 0.16);
+  background-color: #f8fafc !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #f8fafc;
+    --foreground: #111827;
+    background-color: #f8fafc !important;
+  }
+}
+
+html, body {
+  background-color: white !important;
+}
+
+body {
+  background: white;
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin-slow-on-hover {
+  transition: transform 0.5s ease;
+}
+
+.group:hover .spin-slow-on-hover {
+  animation: spin-slow 6s linear infinite;
+}
+
+@keyframes zoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes marquee-reverse {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 180s linear infinite;
+}
+
+.animate-marquee-reverse {
+  animation: marquee-reverse 180s linear infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 15s linear infinite;
+}
+
+button, a, select, input[type="checkbox"], input[type="radio"] {
+  cursor: pointer;
+}
+
+button:disabled, a:disabled, select:disabled, input:disabled {
+  cursor: not-allowed;
+}
+
+/* Custom & Global Scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 9999px;
+  border: 2.5px solid var(--background);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary);
+}
+
+main::-webkit-scrollbar {
+  width: 8px;
+}
+
+main::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+main::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 9999px;
+  border: 2px solid var(--background);
+}
+
+main::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary);
+}
+
+/* Firefox support */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) var(--background);
+}
+
