@@ -191,6 +191,79 @@ test('proximityKey marks block boundaries for repeated multi-field blocks', () =
   assert.deepEqual(res.t2, { type: 'experience', index: 1 });
 });
 
+// ---------------------------------------------------------------------------
+// (h) BUG GUARD: a SINGLE experience block that contains a duplicate-ish subfield
+//     key (Role -> jobTitle, Responsibilities/Job Summary -> summary) must keep
+//     EVERY field, including the long-text description/summary, at index 0.
+//     Previously the summary field crossed into index 1 because clustering split
+//     on any repeated subfield key.
+// ---------------------------------------------------------------------------
+test('single experience block with duplicate-ish keys keeps description at index 0', () => {
+  const fields = [
+    { id: 'c1', name: 'company', label: 'Company', headingText: 'Work Experience', containerKey: 'X', domOrder: 0 },
+    { id: 't1', name: 'title', label: 'Job Title', headingText: 'Work Experience', containerKey: 'X', domOrder: 1 },
+    { id: 'r1', name: 'role', label: 'Role', headingText: 'Work Experience', containerKey: 'X', domOrder: 2 }, // dup -> jobTitle
+    { id: 'l1', name: 'loc', label: 'Job Location', headingText: 'Work Experience', containerKey: 'X', domOrder: 3 },
+    { id: 'resp', name: 'resp', label: 'Responsibilities', headingText: 'Work Experience', containerKey: 'X', domOrder: 4 }, // -> summary
+    { id: 'desc', name: 'summary', label: 'Job Summary', headingText: 'Work Experience', containerKey: 'X', domOrder: 5 } // dup -> summary (was landing on index 1)
+  ];
+  const res = RG.assignGroupIndices(fields);
+  assert.deepEqual(res.c1, { type: 'experience', index: 0 });
+  assert.deepEqual(res.t1, { type: 'experience', index: 0 });
+  assert.deepEqual(res.r1, { type: 'experience', index: 0 });
+  assert.deepEqual(res.l1, { type: 'experience', index: 0 });
+  assert.deepEqual(res.resp, { type: 'experience', index: 0 });
+  // the crux: description/summary must NOT cross into the next entry
+  assert.deepEqual(res.desc, { type: 'experience', index: 0 });
+  assert.notEqual(res.desc.index, 1);
+});
+
+// ---------------------------------------------------------------------------
+// (i) two experience blocks each [Company, Job Title, Description] sharing a
+//     distinct block key -> block1 all index 0, block2 all index 1 (description
+//     included in the correct block).
+// ---------------------------------------------------------------------------
+test('two experience blocks split by block key keep each description in its own entry', () => {
+  const fields = [
+    { id: 'c1', name: 'company', label: 'Company', headingText: '', containerKey: '', proximityKey: 'blk1', domOrder: 0 },
+    { id: 't1', name: 'title', label: 'Job Title', headingText: '', containerKey: '', proximityKey: 'blk1', domOrder: 1 },
+    { id: 'd1', name: 'summary', label: 'Responsibilities', headingText: '', containerKey: '', proximityKey: 'blk1', domOrder: 2 },
+    { id: 'c2', name: 'company', label: 'Company', headingText: '', containerKey: '', proximityKey: 'blk2', domOrder: 3 },
+    { id: 't2', name: 'title', label: 'Job Title', headingText: '', containerKey: '', proximityKey: 'blk2', domOrder: 4 },
+    { id: 'd2', name: 'summary', label: 'Responsibilities', headingText: '', containerKey: '', proximityKey: 'blk2', domOrder: 5 }
+  ];
+  const res = RG.assignGroupIndices(fields);
+  assert.deepEqual(res.c1, { type: 'experience', index: 0 });
+  assert.deepEqual(res.t1, { type: 'experience', index: 0 });
+  assert.deepEqual(res.d1, { type: 'experience', index: 0 });
+  assert.deepEqual(res.c2, { type: 'experience', index: 1 });
+  assert.deepEqual(res.t2, { type: 'experience', index: 1 });
+  assert.deepEqual(res.d2, { type: 'experience', index: 1 });
+});
+
+// ---------------------------------------------------------------------------
+// (j) descriptions rendered OUT of DOM order relative to their anchors (e.g. both
+//     rich-text areas appended after the two anchor blocks). Each description must
+//     still map to its own block index via the block key, not to the last block.
+// ---------------------------------------------------------------------------
+test('out-of-order descriptions map to their own block index', () => {
+  const fields = [
+    { id: 'c1', name: 'company', label: 'Company', headingText: '', containerKey: '', proximityKey: 'blk1', domOrder: 0 },
+    { id: 't1', name: 'title', label: 'Job Title', headingText: '', containerKey: '', proximityKey: 'blk1', domOrder: 1 },
+    { id: 'c2', name: 'company', label: 'Company', headingText: '', containerKey: '', proximityKey: 'blk2', domOrder: 2 },
+    { id: 't2', name: 'title', label: 'Job Title', headingText: '', containerKey: '', proximityKey: 'blk2', domOrder: 3 },
+    // descriptions appear last, out of order, but carry their block key
+    { id: 'd1', name: 'summary', label: 'Job Summary', headingText: '', containerKey: '', proximityKey: 'blk1', domOrder: 4 },
+    { id: 'd2', name: 'summary', label: 'Job Summary', headingText: '', containerKey: '', proximityKey: 'blk2', domOrder: 5 }
+  ];
+  const res = RG.assignGroupIndices(fields);
+  assert.deepEqual(res.c1, { type: 'experience', index: 0 });
+  assert.deepEqual(res.c2, { type: 'experience', index: 1 });
+  assert.deepEqual(res.d1, { type: 'experience', index: 0 }); // belongs to blk1
+  assert.deepEqual(res.d2, { type: 'experience', index: 1 }); // belongs to blk2
+  assert.notEqual(res.d1.index, res.d2.index);
+});
+
 test('detectSubfield maps per-entry labels to their section type', () => {
   assert.deepEqual(RG.detectSubfield('Company'), { type: 'experience', key: 'company' });
   assert.deepEqual(RG.detectSubfield('Job Title'), { type: 'experience', key: 'jobTitle' });

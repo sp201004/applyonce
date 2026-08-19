@@ -45,6 +45,16 @@
     { type: 'projects', key: 'description', regex: /\bproject\s*description\b/i }
   ];
 
+  // The anchor subfield that "opens" a new instance for each section type. A new
+  // section instance is only ever started when this key repeats (see the anchor
+  // cycle in clusterByRepeatedLabels) — never on an arbitrary duplicate subfield.
+  const ANCHOR_KEYS = { experience: 'company', education: 'collegeName', projects: 'name' };
+
+  // Long-text / continuation subfields (description, summary, notes). These must
+  // NEVER start a new instance: a rich-text description rendered after the other
+  // controls is a continuation of the current entry, not the start of the next.
+  const CONTINUATION_KEYS = new Set(['summary', 'description', 'notes']);
+
   // Detect whether a field's text maps to a known per-entry subfield of a section.
   // Returns { type, key } or null. This is what makes a field "section-defining".
   function detectSubfield(text) {
@@ -107,10 +117,21 @@
   }
 
   // Fallback clustering for the "repeated label set / DOM proximity" case.
-  // Walks fields in DOM order. A new group instance for a type starts whenever a
-  // section-defining label that was ALREADY seen for the current instance appears
-  // again, OR when a best-effort DOM-proximity block boundary is crossed. Yields
-  // instances 0,1,2... by DOM order.
+  // Walks fields in DOM order and assigns each section-defining field a 0-based
+  // instance index. A new instance must be started by a ROBUST boundary — never
+  // by "any subfield key seen before" (which wrongly bumped a description/summary
+  // control into the next entry). Boundary signals, in priority order:
+  //   1. A change in block key (proximityKey/containerKey): fields under a distinct
+  //      repeated-block ancestor. This is the strongest boundary. When present we
+  //      cluster STRICTLY by block key and never split within the same block. A
+  //      field with no block key attaches to the most recently seen block, so a
+  //      control rendered out of DOM order still lands in its own block's index.
+  //   2. No distinct block key: an ANCHOR-key cycle. Pick the section's anchor
+  //      subfield (company / college / project name) and start a new instance only
+  //      when that anchor repeats. Non-anchor duplicate keys stay in the current
+  //      instance.
+  //   3. Long-text continuation subfields (description/summary/notes) never start a
+  //      new instance.
   // Returns { result: { [id]: { type, index } }, counts: { [type]: instanceCount } }.
   function clusterByRepeatedLabels(fields) {
     const result = {};
@@ -121,36 +142,55 @@
       .map((f, i) => ({ f, domOrder: typeof f.domOrder === 'number' ? f.domOrder : i }))
       .sort((a, b) => a.domOrder - b.domOrder);
 
-    const state = {}; // type -> { index, seen:Set<key>, proximityKey }
-
+    // Bucket section-defining fields per type, preserving DOM order.
+    const perType = {}; // type -> [{ id, key, blockKey }]
     for (const { f } of ordered) {
       if (!f || !f.id) continue;
       const sub = detectSubfield(`${f.label || ''} ${f.name || ''}`);
       if (!sub) continue; // not a section-defining field -> stays global
-      const { type, key } = sub;
-      const proximityKey = f.proximityKey || '';
-      let st = state[type];
-      if (!st) {
-        st = state[type] = { index: 0, seen: new Set([key]), proximityKey };
-      } else {
-        const repeatedLabel = st.seen.has(key);
-        // proximityKey is only ever non-empty for genuine repeated multi-field
-        // blocks (computed defensively in content.js), so a change safely marks a
-        // block boundary without over-splitting single sections.
-        const proximityChanged = !!proximityKey && !!st.proximityKey && proximityKey !== st.proximityKey;
-        if (repeatedLabel || proximityChanged) {
-          st.index += 1;
-          st.seen = new Set([key]);
-          st.proximityKey = proximityKey;
-        } else {
-          st.seen.add(key);
-          if (proximityKey) st.proximityKey = proximityKey;
-        }
-      }
-      result[f.id] = { type, index: st.index };
+      const blockKey = f.proximityKey || f.containerKey || '';
+      (perType[sub.type] = perType[sub.type] || []).push({ id: f.id, key: sub.key, blockKey });
     }
 
-    Object.keys(state).forEach(t => { counts[t] = state[t].index + 1; });
+    Object.keys(perType).forEach(type => {
+      const items = perType[type];
+      const hasBlockKeys = items.some(it => it.blockKey);
+
+      if (hasBlockKeys) {
+        // (1) Strongest boundary: cluster strictly by repeated-block ancestor. Once
+        // a field is assigned to a block, its index is that block's index regardless
+        // of label repeats inside the block. Fields with no block key attach to the
+        // most recently seen block (out-of-order description support).
+        const blockIndex = {};
+        let nextIndex = 0;
+        let currentIndex = 0;
+        items.forEach(it => {
+          if (it.blockKey) {
+            if (!(it.blockKey in blockIndex)) blockIndex[it.blockKey] = nextIndex++;
+            currentIndex = blockIndex[it.blockKey];
+          }
+          result[it.id] = { type, index: currentIndex };
+        });
+        counts[type] = Math.max(nextIndex, 1);
+      } else {
+        // (2) No block signal: anchor-key cycle. Start a new instance only when the
+        // section's anchor subfield repeats. (3) Never split on a continuation key.
+        const anchorKey = items.some(it => it.key === ANCHOR_KEYS[type])
+          ? ANCHOR_KEYS[type]
+          : items[0].key;
+        let index = 0;
+        let anchorSeen = false;
+        items.forEach(it => {
+          if (it.key === anchorKey && !CONTINUATION_KEYS.has(it.key)) {
+            if (anchorSeen) index += 1;
+            anchorSeen = true;
+          }
+          result[it.id] = { type, index };
+        });
+        counts[type] = index + 1;
+      }
+    });
+
     return { result, counts };
   }
 
