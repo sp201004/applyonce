@@ -25,6 +25,36 @@
     }
   ];
 
+  // Per-entry subfield patterns. Used by the repeated-label clustering fallback
+  // to detect repeated experience/education/project blocks that are plain <div>s
+  // with NO fieldset, NO keyword container, NO numbered names, and NO numbered
+  // headings — just identical label sets appearing 2+ times in DOM order.
+  const SUBFIELD_PATTERNS = [
+    // experience
+    { type: 'experience', key: 'company', regex: /\b(company|employer)\b/i },
+    { type: 'experience', key: 'jobTitle', regex: /\b(job\s*title|position|role)\b/i },
+    { type: 'experience', key: 'summary', regex: /\b(summary|role description|job description|work summary|experience summary|job summary|responsibilities)\b/i },
+    { type: 'experience', key: 'location', regex: /\b(job location|work location|employer location|company location)\b/i },
+    // education
+    { type: 'education', key: 'collegeName', regex: /\b(college|university|school|institute)\b/i },
+    { type: 'education', key: 'degree', regex: /\b(degree|accreditation)\b/i },
+    { type: 'education', key: 'branch', regex: /\b(branch|specialization|major)\b/i },
+    { type: 'education', key: 'gpa', regex: /\bgpa\b/i },
+    // projects
+    { type: 'projects', key: 'name', regex: /\bproject\s*(name|title)\b/i },
+    { type: 'projects', key: 'description', regex: /\bproject\s*description\b/i }
+  ];
+
+  // Detect whether a field's text maps to a known per-entry subfield of a section.
+  // Returns { type, key } or null. This is what makes a field "section-defining".
+  function detectSubfield(text) {
+    if (!text || typeof text !== 'string') return null;
+    for (const p of SUBFIELD_PATTERNS) {
+      if (p.regex.test(text)) return { type: p.type, key: p.key };
+    }
+    return null;
+  }
+
   function patternForType(type) {
     return GROUP_TYPE_PATTERNS.find(p => p.type === type) || null;
   }
@@ -76,10 +106,58 @@
     return n > 0 ? n - 1 : 0;
   }
 
+  // Fallback clustering for the "repeated label set / DOM proximity" case.
+  // Walks fields in DOM order. A new group instance for a type starts whenever a
+  // section-defining label that was ALREADY seen for the current instance appears
+  // again, OR when a best-effort DOM-proximity block boundary is crossed. Yields
+  // instances 0,1,2... by DOM order.
+  // Returns { result: { [id]: { type, index } }, counts: { [type]: instanceCount } }.
+  function clusterByRepeatedLabels(fields) {
+    const result = {};
+    const counts = {};
+    if (!Array.isArray(fields)) return { result, counts };
+
+    const ordered = fields
+      .map((f, i) => ({ f, domOrder: typeof f.domOrder === 'number' ? f.domOrder : i }))
+      .sort((a, b) => a.domOrder - b.domOrder);
+
+    const state = {}; // type -> { index, seen:Set<key>, proximityKey }
+
+    for (const { f } of ordered) {
+      if (!f || !f.id) continue;
+      const sub = detectSubfield(`${f.label || ''} ${f.name || ''}`);
+      if (!sub) continue; // not a section-defining field -> stays global
+      const { type, key } = sub;
+      const proximityKey = f.proximityKey || '';
+      let st = state[type];
+      if (!st) {
+        st = state[type] = { index: 0, seen: new Set([key]), proximityKey };
+      } else {
+        const repeatedLabel = st.seen.has(key);
+        // proximityKey is only ever non-empty for genuine repeated multi-field
+        // blocks (computed defensively in content.js), so a change safely marks a
+        // block boundary without over-splitting single sections.
+        const proximityChanged = !!proximityKey && !!st.proximityKey && proximityKey !== st.proximityKey;
+        if (repeatedLabel || proximityChanged) {
+          st.index += 1;
+          st.seen = new Set([key]);
+          st.proximityKey = proximityKey;
+        } else {
+          st.seen.add(key);
+          if (proximityKey) st.proximityKey = proximityKey;
+        }
+      }
+      result[f.id] = { type, index: st.index };
+    }
+
+    Object.keys(state).forEach(t => { counts[t] = state[t].index + 1; });
+    return { result, counts };
+  }
+
   // Given a flat list of field descriptors, cluster them into repeating sections and
   // assign each a 0-based index by DOM order. Returns { [fieldId]: { type, index } }.
   //
-  // Each field descriptor: { id, name, label, headingText, containerKey, domOrder }
+  // Each field descriptor: { id, name, label, headingText, containerKey, domOrder, proximityKey? }
   // Fields that don't belong to any repeating section are omitted (keep global matching).
   function assignGroupIndices(fields) {
     const result = {};
@@ -127,12 +205,36 @@
     });
 
     // Sort each type's sections by DOM order, then map section i -> profile[i].
+    const structuralCounts = {};
     Object.keys(perType).forEach(type => {
       const instances = perType[type].slice().sort((a, b) => a.minDomOrder - b.minDomOrder);
+      structuralCounts[type] = instances.length;
       instances.forEach((inst, idx) => {
         inst.ids.forEach(id => { result[id] = { type, index: idx }; });
       });
     });
+
+    // Fallback: repeated-label / DOM-proximity clustering. Only activated for a
+    // type when it infers 2+ instances AND the structural detection above did NOT
+    // already split that type into distinct indices (avoid double-handling the
+    // already-working fieldset/numbered-name/numbered-heading paths).
+    try {
+      const { result: clustered, counts } = clusterByRepeatedLabels(fields);
+      Object.keys(counts).forEach(type => {
+        if (counts[type] >= 2 && (structuralCounts[type] || 0) < 2) {
+          // Drop any single-instance structural assignments for this type, then
+          // apply the clustered multi-instance indices.
+          Object.keys(result).forEach(id => {
+            if (result[id] && result[id].type === type) delete result[id];
+          });
+          Object.keys(clustered).forEach(id => {
+            if (clustered[id].type === type) result[id] = clustered[id];
+          });
+        }
+      });
+    } catch (e) {
+      // Defensive: grouping must never throw and break autofill.
+    }
 
     return result;
   }
@@ -175,6 +277,8 @@
     baseToType,
     parseNumberedName,
     detectSectionIndex,
+    detectSubfield,
+    clusterByRepeatedLabels,
     assignGroupIndices,
     profileKeyForType,
     applyGroupIndex,

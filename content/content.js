@@ -122,6 +122,37 @@ function findRepeatContainer(el) {
   return null;
 }
 
+// Count real form controls inside a node (used to spot genuine repeated blocks).
+function countFieldsIn(node) {
+  try {
+    return node.querySelectorAll('input:not([type="hidden"]):not([type="submit"]), select, textarea, [contenteditable="true"]').length;
+  } catch (e) {
+    return 0;
+  }
+}
+
+// Best-effort DOM-proximity signal: the nearest ancestor that is itself a
+// multi-field block AND has a same-tag sibling that is also a multi-field block
+// (i.e. a genuine repeated section instance). Returns a stable key per block, or
+// '' when the field is not inside a repeated block (so single sections are never
+// over-split). Defensive: never throws.
+function getProximityKey(el) {
+  try {
+    let node = el.parentElement;
+    for (let i = 0; i < 8 && node && node !== document.body; i++) {
+      const parent = node.parentElement;
+      if (parent && countFieldsIn(node) >= 2) {
+        const hasRepeatedSibling = Array.from(parent.children).some(
+          c => c !== node && c.tagName === node.tagName && countFieldsIn(c) >= 2
+        );
+        if (hasRepeatedSibling) return getRepeatContainerKey(node);
+      }
+      node = parent;
+    }
+  } catch (e) {}
+  return '';
+}
+
 // Best-effort section heading text (used to detect type + explicit index).
 function getSectionHeadingText(container, el) {
   if (container) {
@@ -303,6 +334,7 @@ async function extractAndFill(root = document) {
       label: finalLabel,
       headingText: getSectionHeadingText(container, el),
       containerKey: container ? getRepeatContainerKey(container) : '',
+      proximityKey: getProximityKey(el),
       domOrder: i
     });
   });

@@ -105,6 +105,102 @@ test('three experience sections produce indices 0,1,2 in DOM order', () => {
 });
 
 // ---------------------------------------------------------------------------
+// (d) NEW: repeated label set, NO fieldset / NO numbered names / NO numbered
+//     headings / NO keyword container -> plain divs with identical labels x2.
+//     This is the real-form case that used to duplicate experience[0].
+// ---------------------------------------------------------------------------
+test('two plain-div experience blocks (repeated labels only) map to entry 0 and 1', () => {
+  const fields = [
+    { id: 'c1', name: 'company', label: 'Company', headingText: '', containerKey: '', domOrder: 0 },
+    { id: 't1', name: 'job_title', label: 'Job Title', headingText: '', containerKey: '', domOrder: 1 },
+    { id: 's1', name: 'summary', label: 'Summary', headingText: '', containerKey: '', domOrder: 2 },
+    { id: 'c2', name: 'company', label: 'Company', headingText: '', containerKey: '', domOrder: 3 },
+    { id: 't2', name: 'job_title', label: 'Job Title', headingText: '', containerKey: '', domOrder: 4 },
+    { id: 's2', name: 'summary', label: 'Summary', headingText: '', containerKey: '', domOrder: 5 }
+  ];
+  const res = RG.assignGroupIndices(fields);
+  // entry 0
+  assert.deepEqual(res.c1, { type: 'experience', index: 0 });
+  assert.deepEqual(res.t1, { type: 'experience', index: 0 });
+  assert.deepEqual(res.s1, { type: 'experience', index: 0 });
+  // entry 1 (NOT duplicated into 0)
+  assert.deepEqual(res.c2, { type: 'experience', index: 1 });
+  assert.deepEqual(res.t2, { type: 'experience', index: 1 });
+  assert.deepEqual(res.s2, { type: 'experience', index: 1 });
+  // entry 0 fields != entry 1 fields
+  assert.notEqual(res.c1.index, res.c2.index);
+});
+
+// ---------------------------------------------------------------------------
+// (e) NEW: mixed global fields (name/email) + two plain-div education blocks.
+//     Globals must stay ungrouped; education blocks index 0 and 1.
+// ---------------------------------------------------------------------------
+test('globals stay ungrouped while plain-div education blocks index 0 and 1', () => {
+  const fields = [
+    { id: 'name', name: 'full_name', label: 'Full Name', headingText: '', containerKey: '', domOrder: 0 },
+    { id: 'email', name: 'email', label: 'Email', headingText: '', containerKey: '', domOrder: 1 },
+    { id: 'col1', name: 'college', label: 'College', headingText: '', containerKey: '', domOrder: 2 },
+    { id: 'deg1', name: 'degree', label: 'Degree', headingText: '', containerKey: '', domOrder: 3 },
+    { id: 'col2', name: 'college', label: 'College', headingText: '', containerKey: '', domOrder: 4 },
+    { id: 'deg2', name: 'degree', label: 'Degree', headingText: '', containerKey: '', domOrder: 5 }
+  ];
+  const res = RG.assignGroupIndices(fields);
+  // globals untouched -> global matching preserved
+  assert.equal(res.name, undefined);
+  assert.equal(res.email, undefined);
+  // education blocks indexed
+  assert.deepEqual(res.col1, { type: 'education', index: 0 });
+  assert.deepEqual(res.deg1, { type: 'education', index: 0 });
+  assert.deepEqual(res.col2, { type: 'education', index: 1 });
+  assert.deepEqual(res.deg2, { type: 'education', index: 1 });
+});
+
+// ---------------------------------------------------------------------------
+// (f) NEW: three plain-div experience blocks -> indices 0,1,2.
+// ---------------------------------------------------------------------------
+test('three plain-div experience blocks (repeated labels) produce indices 0,1,2', () => {
+  const fields = [
+    { id: 'c0', name: 'company', label: 'Company', headingText: '', containerKey: '', domOrder: 0 },
+    { id: 'r0', name: 'role', label: 'Role', headingText: '', containerKey: '', domOrder: 1 },
+    { id: 'c1', name: 'company', label: 'Company', headingText: '', containerKey: '', domOrder: 2 },
+    { id: 'r1', name: 'role', label: 'Role', headingText: '', containerKey: '', domOrder: 3 },
+    { id: 'c2', name: 'company', label: 'Company', headingText: '', containerKey: '', domOrder: 4 },
+    { id: 'r2', name: 'role', label: 'Role', headingText: '', containerKey: '', domOrder: 5 }
+  ];
+  const res = RG.assignGroupIndices(fields);
+  assert.deepEqual(res.c0, { type: 'experience', index: 0 });
+  assert.deepEqual(res.c1, { type: 'experience', index: 1 });
+  assert.deepEqual(res.c2, { type: 'experience', index: 2 });
+});
+
+// ---------------------------------------------------------------------------
+// (g) NEW: proximityKey splits blocks even if a field label differs, without
+//     over-splitting a single section (empty proximityKey = no split).
+// ---------------------------------------------------------------------------
+test('proximityKey marks block boundaries for repeated multi-field blocks', () => {
+  const fields = [
+    { id: 'c1', name: 'company', label: 'Company', headingText: '', containerKey: '', proximityKey: 'blk1', domOrder: 0 },
+    { id: 't1', name: 'title', label: 'Job Title', headingText: '', containerKey: '', proximityKey: 'blk1', domOrder: 1 },
+    { id: 'c2', name: 'company', label: 'Company', headingText: '', containerKey: '', proximityKey: 'blk2', domOrder: 2 },
+    { id: 't2', name: 'title', label: 'Job Title', headingText: '', containerKey: '', proximityKey: 'blk2', domOrder: 3 }
+  ];
+  const res = RG.assignGroupIndices(fields);
+  assert.deepEqual(res.c1, { type: 'experience', index: 0 });
+  assert.deepEqual(res.t1, { type: 'experience', index: 0 });
+  assert.deepEqual(res.c2, { type: 'experience', index: 1 });
+  assert.deepEqual(res.t2, { type: 'experience', index: 1 });
+});
+
+test('detectSubfield maps per-entry labels to their section type', () => {
+  assert.deepEqual(RG.detectSubfield('Company'), { type: 'experience', key: 'company' });
+  assert.deepEqual(RG.detectSubfield('Job Title'), { type: 'experience', key: 'jobTitle' });
+  assert.deepEqual(RG.detectSubfield('University'), { type: 'education', key: 'collegeName' });
+  assert.deepEqual(RG.detectSubfield('Project Name'), { type: 'projects', key: 'name' });
+  assert.equal(RG.detectSubfield('Email'), null);
+  assert.equal(RG.detectSubfield('Full Name'), null);
+});
+
+// ---------------------------------------------------------------------------
 // single-textarea join (edge case)
 // ---------------------------------------------------------------------------
 test('joinMultiEntry joins entry summaries with a blank line', () => {
